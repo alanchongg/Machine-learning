@@ -1,0 +1,70 @@
+import pandas as pd
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.model_selection import KFold, cross_val_score
+from sklearn.impute import SimpleImputer
+from sklearn.pipeline import make_pipeline, Pipeline
+from sklearn.compose import make_column_transformer
+
+depth=15 #random forest depth of each tree
+foldes=5 #how many times to test for cross validation
+df = pd.read_csv('weatherAUS.csv') #reading csv as panda dataframe
+remove_List=['Date', #list of items to remove
+            'Pressure3pm',
+            'Pressure9am',
+            'WindGustDir',
+            'WindDir9am',
+            'WindGustSpeed',
+            'WindSpeed9am',
+            'WindSpeed3pm',
+            'WindDir3pm',
+            'RainToday']
+
+#drop all wind data and rain today
+df=df.drop(remove_List,
+            axis=1,
+            inplace=False)
+
+cols_Name=df.columns #name of all columns
+
+drop_List=[] #columns that have more than 10000 NA
+for col in cols_Name: #find all col with more than 10000 NA
+    if df[col].isnull().sum() > 10000:
+        drop_List.append(col)
+
+df=df.drop(drop_List, axis=1, inplace=False) #drop columns with more than 10000NA
+df=df.dropna(subset='RainTomorrow') #drop NA in RainTomorrow column
+
+y=df[['RainTomorrow']] #target
+x=df.drop(['RainTomorrow'], axis=1, inplace=False) #features
+
+string_col=[]
+impute_needed=[] #list of colums that needs to impute
+
+for impute in x.columns.tolist():
+    if x[impute].dtype == 'object':
+        string_col.append(impute)
+    if x[impute].isnull().sum() > 0:
+        impute_needed.append(impute)
+
+#onehotencorder setup
+ohe=Pipeline([('encode', OneHotEncoder(sparse_output=False))]) 
+
+#impute setup
+imputer=Pipeline([('impute', SimpleImputer(missing_values=pd.NA, strategy='mean'))])
+
+#ML algorithm
+rf=RandomForestClassifier(max_depth=depth)
+
+#setting up cross validation
+kf=KFold(n_splits=foldes, shuffle=True, random_state=21) 
+
+#adding both onehotencoder and impute
+preprosses= make_column_transformer((imputer, impute_needed), (ohe, string_col), remainder='passthrough')
+
+#pipline
+pipe=make_pipeline(preprosses, rf) 
+
+#testing
+score=cross_val_score(pipe, x, y.values.ravel(), cv=kf, error_score='raise', n_jobs=12).mean()
+print('Accuracy: {}'.format(round(score * 100, 2))) #average of test
